@@ -244,6 +244,7 @@ The merged count can be smaller than the sum of imported and existing counts bec
 
 especially the following paragraph:
 >**Build an AppID allow list**
+>
 >Create an EWSAllowedAppIDs allow list containing only applications that are known to still require EWS. This includes Microsoft first-party client apps such as Office, Power Query for Excel etc. If >the app shows up in your usage report, and you want to keep using it, you need to add it to the list.  
 
 ## Disclaimer

@@ -141,7 +141,7 @@ fc108d3f-543d-4374-bbff-c7c51f651fe5
 If `EWS-AppIDs.txt` is in the same directory as the script:
 
 ```powershell
-.\\Set-EWSAllowedAppIDs.ps1
+.\Set-EWSAllowedAppIDs.ps1
 ```
 
 The script displays:
@@ -159,7 +159,7 @@ No Exchange Online configuration is changed.
 ### 2\. Preview using a different App ID file
 
 ```powershell
-.\\Set-EWSAllowedAppIDs.ps1 -AppIdsPath 'C:\\ChangeData\\Reviewed-EWS-AppIDs.txt'
+.\Set-EWSAllowedAppIDs.ps1 -AppIdsPath 'C:\\ChangeData\\Reviewed-EWS-AppIDs.txt'
 ```
 
 This is useful when the reviewed inventory is stored outside the script directory.
@@ -167,7 +167,7 @@ This is useful when the reviewed inventory is stored outside the script director
 ### 3\. Apply using the default App ID file
 
 ```powershell
-.\\Set-EWSAllowedAppIDs.ps1 -Apply
+.\Set-EWSAllowedAppIDs.ps1 -Apply
 ```
 
 The script:
@@ -182,7 +182,7 @@ The script:
 ### 4\. Apply using a specific App ID file
 
 ```powershell
-.\\Set-EWSAllowedAppIDs.ps1 `
+.\Set-EWSAllowedAppIDs.ps1 `
     -AppIdsPath 'C:\\ChangeData\\Approved-EWS-AppIDs.txt' `
     -Apply
 ```

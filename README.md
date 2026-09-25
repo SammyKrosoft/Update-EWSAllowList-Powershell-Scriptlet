@@ -240,10 +240,11 @@ The merged count can be smaller than the sum of imported and existing counts bec
 
 ## Microsoft documentation
 
-* [Control access to EWS in Exchange](https://learn.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-control-access-to-ews-in-exchange)
-* [Set-OrganizationConfig reference](https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/set-organizationconfig)
-* [Deprecation of Exchange Web Services in Exchange Online](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-ews-exchange-online)
-* [Verify first-party Microsoft applications in sign-in reports](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/governance/verify-first-party-apps-sign-in)
+* [Deprecation of Exchange Web Services in Exchange Online](https://techcommunity.microsoft.com/blog/exchange/introducing-ewsallowedappids-preparing-for-the-final-phase-of-ews-retirement/4529471)
+
+especially the following paragraph:
+>**Build an AppID allow list**
+>Create an EWSAllowedAppIDs allow list containing only applications that are known to still require EWS. This includes Microsoft first-party client apps such as Office, Power Query for Excel etc. If >the app shows up in your usage report, and you want to keep using it, you need to add it to the list.  
 
 ## Disclaimer
 

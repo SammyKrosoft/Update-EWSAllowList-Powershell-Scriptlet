@@ -161,7 +161,7 @@ No Exchange Online configuration is changed.
 ### 2\. Preview using a different App ID file
 
 ```powershell
-.\Set-EWSAllowedAppIDs.ps1 -AppIdsPath 'C:\\ChangeData\\Reviewed-EWS-AppIDs.txt'
+.\Set-EWSAllowedAppIDs.ps1 -AppIdsPath 'C:\ChangeData\Reviewed-EWS-AppIDs.txt'
 ```
 
 This is useful when the reviewed inventory is stored outside the script directory.
@@ -185,7 +185,7 @@ The script:
 
 ```powershell
 .\Set-EWSAllowedAppIDs.ps1 `
-    -AppIdsPath 'C:\\ChangeData\\Approved-EWS-AppIDs.txt' `
+    -AppIdsPath 'C:\ChangeData\Approved-EWS-AppIDs.txt' `
     -Apply
 ```
 
@@ -200,7 +200,7 @@ Values will vary by tenant and input file.
 ```text
 Configuration summary:
 
-AppIdFilePath           : C:\\Scripts\\EWS-AppIDs.txt
+AppIdFilePath           : C:\Scripts\EWS-AppIDs.txt
 ImportedAppIdCount      : 81
 UniqueExistingAppIdCount: 4
 MergedAppIdCount        : 83

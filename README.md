@@ -27,6 +27,7 @@ $detectedAppIds = @(
     "f8d98a96-0999-43f5-8af3-69971c7bb423" # iOS Accounts
 )
 
+# Retrieve the current Exchange Online configuration, including the EWS operation access policy.
 $configBefore = Get-OrganizationConfig -RetrieveEwsOperationAccessPolicy -ErrorAction Stop
 if ($null -eq $configBefore) {
     throw 'Unable to retrieve the Exchange Online configuration.'
@@ -35,6 +36,7 @@ if ($null -eq $configBefore.PSObject.Properties['EwsAllowedAppIDs']) {
     throw 'The EwsAllowedAppIDs property is missing. Check the Exchange Online session and permissions.'
 }
 
+# Extract the existing EWS App IDs from the current configuration.
 $existingAppIds = @(
     ((@($configBefore.EwsAllowedAppIDs) -join ',') -split ',') |
         ForEach-Object { $_.Trim() } |
@@ -42,12 +44,14 @@ $existingAppIds = @(
 )
 
 # Validate and normalize GUIDs. An unexpected value stops processing.
+# Combine the existing and newly detected App IDs, normalize them as GUIDs, and remove duplicates.
 $finalAppIds = @(
     ($existingAppIds + $detectedAppIds) |
         ForEach-Object { ([guid]$_).ToString() } |
         Sort-Object -Unique
 )
 
+# Display a summary of the configuration changes and the proposed final list of EWS App IDs.
 Write-Host "`nConfiguration summary:" -ForegroundColor Cyan
 [pscustomobject]@{
     DetectedAppIdCount = $detectedAppIds.Count
@@ -63,13 +67,18 @@ Write-Host "`nConfiguration summary:" -ForegroundColor Cyan
     Write-Host $_ -ForegroundColor Cyan
 }
 
+# Display the complete proposed list of EWS App IDs.
 Write-Host "`nComplete proposed list:" -ForegroundColor White
+# Iterate through the final list and display each EWS App ID individually.
 foreach ($appId in $finalAppIds) {
     Write-Host $appId -ForegroundColor Gray
 }
+# Display the EwsAllowedAppIDs value as a comma-separated string.
 Write-Host "`nEwsAllowedAppIDs value:" -ForegroundColor Magenta
+# Join the final list of EWS App IDs into a single comma-separated string for display.
 Write-Host ($finalAppIds -join ',') -ForegroundColor Magenta
 
+# Preview or apply the configuration changes based on the -Apply switch.
 if (-not $Apply) {
     Write-Host "`nPREVIEW ONLY: No changes made. To apply the configuration, run this script again with -Apply." -ForegroundColor Yellow
 }
@@ -81,19 +90,21 @@ else {
         EwsEnabled = $configBefore.EwsEnabled
         EwsAllowedAppIDs = $configBefore.EwsAllowedAppIDs
     } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $backupPath -Encoding UTF8 -ErrorAction Stop
+    # Notify the user that the backup has been saved successfully.
     Write-Host ("`nBackup saved: " + $backupPath) -ForegroundColor Green
-
+    # Notify the user that the script is now applying the EWS configuration changes.
     Write-Host "`nApplying the EWS configuration..." -ForegroundColor Yellow
+    # Apply the EWS configuration changes to the organization.
     Set-OrganizationConfig -EwsEnabled $true -EwsAllowedAppIDs ($finalAppIds -join ',') -ErrorAction Stop
-
+    # Notify the user that the EWS configuration changes have been applied successfully.
     Write-Host "`nSaved configuration (service propagation may be delayed):" -ForegroundColor Green
+    # Display the saved EWS configuration for verification.
     Get-OrganizationConfig -RetrieveEwsOperationAccessPolicy -ErrorAction Stop |
         Format-List EwsEnabled, EwsAllowedAppIDs |
         Out-String -Stream | ForEach-Object {
             Write-Host $_ -ForegroundColor Green
         }
 }
-
 
 ```
 

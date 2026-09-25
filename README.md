@@ -156,6 +156,8 @@ The script displays:
 
 No Exchange Online configuration is changed.
 
+<img width=50% height=50% alt="image" src="https://github.com/user-attachments/assets/ff14a5e6-086d-4c33-ae6e-99ef757ef669" />
+
 ### 2\. Preview using a different App ID file
 
 ```powershell
@@ -186,6 +188,10 @@ The script:
     -AppIdsPath 'C:\\ChangeData\\Approved-EWS-AppIDs.txt' `
     -Apply
 ```
+
+<img width=50% height=50% alt="image" src="https://github.com/user-attachments/assets/3a227e99-84df-4661-a079-db4c10907c79" />
+
+
 
 ## Example preview summary
 

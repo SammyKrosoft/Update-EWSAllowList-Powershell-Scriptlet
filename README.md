@@ -1,139 +1,251 @@
-# Update-EWSAllowList-Powershell-Scriptlet
-Script to update the EWS Allow IP List
+# Exchange Online EWS Allowed App IDs Configuration Script
 
-```PowerShell
+This PowerShell script safely previews or updates the tenant-level `EwsAllowedAppIDs` configuration in Exchange Online from a plain-text list of Microsoft Entra application (client) IDs.
 
-# Load EWS App IDs from a plain text file, with one GUID per line.
-# By default, use EWS-AppIDs.txt in the same folder as this script.
-# The supplied text file contains the 81 previously identified App IDs:
-# 79 from the script CSV files, plus Office and Power Query from the earlier M365 report.
-# Run in an Exchange Online PowerShell session that is already connected.
-# Without -Apply: read and preview. With -Apply: back up, merge, and apply.
-# Existing allowed App IDs are preserved. Removing a line does not revoke existing access.
-# Applications missing from the reviewed inventories may not be covered.
+It is designed for administrators preparing an Exchange Online tenant for continued, controlled EWS access. The script uses a **read, merge, and write** approach so that application IDs already configured in the tenant are preserved when new IDs are added.
 
-[CmdletBinding()]
-param(
-    [ValidateNotNullOrEmpty()]
-    [string]$AppIdsPath = (Join-Path $PSScriptRoot 'EWS-AppIDs.txt'),
-    [switch]$Apply
-)
+> \[!IMPORTANT]
+> Review and validate every application ID before applying the configuration. The supplied inventory may not include applications that were absent from the reviewed reports, scripts, or reporting periods.
 
-$ErrorActionPreference = 'Stop'
+## What the script does
 
-# Resolve the full path to the App ID text file and ensure it exists.
-$appIdFilePath = (Resolve-Path -LiteralPath $AppIdsPath -ErrorAction Stop).ProviderPath
-if (-not (Test-Path -LiteralPath $appIdFilePath -PathType Leaf)) {
-    throw "The App ID path must point to a text file: $AppIdsPath"
-}
+The script:
 
-# Read one App ID per line. Ignore blank lines and full-line comments starting with #.
-# Validate the entire file before querying or modifying Exchange Online.
-$appIdLines = @(Get-Content -LiteralPath $appIdFilePath -Encoding UTF8 -ErrorAction Stop)
-# Import and validate the App IDs from the text file.
-$importedAppIds = @(
-    for ($lineIndex = 0; $lineIndex -lt $appIdLines.Count; $lineIndex++) {
-        $line = $appIdLines[$lineIndex].Trim()
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
-            continue
-        }
+1. Reads application IDs from a UTF-8 text file containing one GUID per line.
+2. Ignores blank lines and full-line comments beginning with `#`.
+3. Validates the complete file before querying or modifying Exchange Online.
+4. Normalises, sorts, and removes duplicate application IDs.
+5. Retrieves the current `EwsEnabled` and `EwsAllowedAppIDs` configuration.
+6. Merges imported IDs with the existing tenant allow list.
+7. Preserves every valid application ID that is already configured.
+8. Displays the proposed merged list and comma-separated value.
+9. Runs in preview mode unless the `-Apply` switch is specified.
+10. When applying changes, exports the previous EWS configuration to a timestamped JSON backup.
+11. Sets `EwsEnabled` to `$true` and writes the complete merged allow list.
+12. Retrieves the configuration again so the saved values can be reviewed.
 
-        $parsedAppId = [guid]::Empty
-        if (-not [guid]::TryParse($line, [ref]$parsedAppId)) {
-            throw "Invalid App ID on line $($lineIndex + 1) in '$appIdFilePath': $line. Use one GUID per line."
-        }
-        $parsedAppId.ToString()
-    }
-)
+## Safety behaviour
 
-# Sort and remove duplicate App IDs. Ensure there is at least one valid App ID.
-$importedAppIds = @($importedAppIds | Sort-Object -Unique)
-# Ensure that there is at least one valid App ID after importing and deduplicating.
-if ($importedAppIds.Count -eq 0) {
-    throw "The App ID file contains no App IDs: $appIdFilePath"
-}
+### Preview by default
 
-# Retrieve the current Exchange Online configuration for EWS allowed App IDs.
-$configBefore = Get-OrganizationConfig -RetrieveEwsOperationAccessPolicy -ErrorAction Stop
-# Ensure that the configuration was retrieved successfully.
-if ($null -eq $configBefore) {
-    throw 'Unable to retrieve the Exchange Online configuration.'
-}
-# Ensure that the EwsAllowedAppIDs property exists in the retrieved configuration.
-if ($null -eq $configBefore.PSObject.Properties['EwsAllowedAppIDs']) {
-    throw 'The EwsAllowedAppIDs property is missing. Check the Exchange Online session and permissions.'
-}
+Running the script without `-Apply` does not change the tenant. It only validates the input, reads the current configuration, and displays the proposed result.
 
-# Extract the existing EWS allowed App IDs from the current configuration.
-$existingAppIds = @(
-    ((@($configBefore.EwsAllowedAppIDs) -join ',') -split ',') |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { $_ }
-)
+### Existing IDs are preserved
 
-# Validate and normalize GUIDs. An unexpected value stops processing.
-$finalAppIds = @(
-    ($existingAppIds + $importedAppIds) |
-        ForEach-Object { ([guid]$_).ToString() } |
-        Sort-Object -Unique
-)
+The final value is the union of:
 
-# Display a summary of the configuration before applying any changes.
-Write-Host "`nConfiguration summary:" -ForegroundColor Cyan
-# Create a custom object to summarize the current and proposed EWS App ID configuration.
-[pscustomobject]@{
-    AppIdFilePath = $appIdFilePath
-    ImportedAppIdCount = $importedAppIds.Count
-    UniqueExistingAppIdCount = @($existingAppIds | Sort-Object -Unique).Count
-    MergedAppIdCount = $finalAppIds.Count
-    PreviousEwsEnabled = if ([string]::IsNullOrWhiteSpace([string]$configBefore.EwsEnabled)) {
-        '$null'
-    }
-    else {
-        $configBefore.EwsEnabled
-    }
-    # Display the final merged list of EWS allowed App IDs.
-} | Format-List | Out-String -Stream | ForEach-Object {
-    Write-Host $_ -ForegroundColor Cyan
-}
+* application IDs already present in `EwsAllowedAppIDs`; and
+* application IDs imported from the text file.
 
-# Display the complete proposed list of EWS allowed App IDs.
-Write-Host "`nComplete proposed list:" -ForegroundColor White
-foreach ($appId in $finalAppIds) {
-    Write-Host $appId -ForegroundColor Gray
-}
-# Display the EwsAllowedAppIDs value as a comma-separated string.
-Write-Host "`nEwsAllowedAppIDs value:" -ForegroundColor Magenta
-# Join the final App IDs into a single comma-separated string for display.
-Write-Host ($finalAppIds -join ',') -ForegroundColor Magenta
+Removing an ID from the text file **does not remove it from the tenant configuration** if it is already configured. This script is additive and is not a revocation tool.
 
-# Indicate whether the script is running in preview mode or applying changes.
-if (-not $Apply) {
-    Write-Host "`nPREVIEW ONLY: No changes made. To apply the configuration, run this script again with -Apply." -ForegroundColor Yellow
-}
-else {
-    # Back up both properties as JSON before making any changes.
-    $backupPath = Join-Path $PSScriptRoot ('EWS-config-before-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '.json')
-    [pscustomobject]@{
-        CapturedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-        EwsEnabled = $configBefore.EwsEnabled
-        EwsAllowedAppIDs = $configBefore.EwsAllowedAppIDs
-    } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $backupPath -Encoding UTF8 -ErrorAction Stop
-    Write-Host ("`nBackup saved: " + $backupPath) -ForegroundColor Green
+### Input is validated before changes
 
-    # Apply the new EWS configuration to Exchange Online.
-    Write-Host "`nApplying the EWS configuration..." -ForegroundColor Yellow
-    # Execute the command to update the EWS allowed App IDs with the final merged list.
-    Set-OrganizationConfig -EwsEnabled $true -EwsAllowedAppIDs ($finalAppIds -join ',') -ErrorAction Stop
-    # Display a message indicating that the configuration has been saved.
-    Write-Host "`nSaved configuration (service propagation may be delayed):" -ForegroundColor Green
-    # Retrieve and display the updated EWS configuration to confirm the changes.
-    Get-OrganizationConfig -RetrieveEwsOperationAccessPolicy -ErrorAction Stop |
-        Format-List EwsEnabled, EwsAllowedAppIDs |
-        Out-String -Stream | ForEach-Object {
-            Write-Host $_ -ForegroundColor Green
-        }
-}
+Processing stops if:
 
+* the App ID file cannot be resolved;
+* the path does not identify a file;
+* a non-comment line is not a valid GUID;
+* the file contains no valid application IDs;
+* the Exchange Online configuration cannot be retrieved; or
+* the `EwsAllowedAppIDs` property is unavailable.
+
+### Backup before modification
+
+When `-Apply` is used, the script creates a JSON file in the script directory before calling `Set-OrganizationConfig`.
+
+Example backup name:
+
+```text
+EWS-config-before-20260924-202756-077.json
 ```
+
+The backup contains:
+
+* the UTC capture time;
+* the previous `EwsEnabled` value; and
+* the previous `EwsAllowedAppIDs` value.
+
+> \[!NOTE]
+> Exchange Online configuration changes may not take effect immediately. Allow for service-side propagation before validating application access.
+
+## Prerequisites
+
+* PowerShell 7 or Windows PowerShell 5.1.
+* The Exchange Online PowerShell module.
+* An active Exchange Online PowerShell session established before running the script.
+* Sufficient Exchange Online permissions to run:
+
+  * `Get-OrganizationConfig -RetrieveEwsOperationAccessPolicy`
+  * `Set-OrganizationConfig`
+* A reviewed App ID inventory containing Microsoft Entra application **client IDs**, one GUID per line.
+
+Connect to Exchange Online first, for example:
+
+```powershell
+Connect-ExchangeOnline
+```
+
+## Files
+
+A typical folder layout is:
+
+```text
+.
+├── Set-EWSAllowedAppIDs.ps1
+└── EWS-AppIDs.txt
+```
+
+By default, the script looks for `EWS-AppIDs.txt` in the same folder as the script.
+
+## Parameters
+
+|Parameter|Type|Required|Description|
+|-|-|-:|-|
+|`-AppIdsPath`|`String`|No|Path to the plain-text App ID file. Defaults to `EWS-AppIDs.txt` in the script directory.|
+|`-Apply`|`Switch`|No|Creates a backup and applies the merged configuration. Without this switch, the script runs in preview mode.|
+
+## App ID file format
+
+Use one GUID per line. Blank lines and lines whose first non-whitespace character is `#` are ignored.
+
+The following shortened example uses six recognisable applications from the reviewed inventory. The comments are optional and must be on separate lines because inline comments are not supported.
+
+```text
+# Microsoft Office / Outlook
+d3590ed6-52b3-4102-aeff-aad2292ab01c
+
+# Apple / Apple Mail
+f8d98a96-0999-43f5-8af3-69971c7bb423
+
+# Spark Mail
+b50c1dbd-1855-4e54-b07c-d3c3029e93d3
+
+# Fantastical
+395befa1-fd95-454c-8286-2948ada76320
+
+# Mozilla Thunderbird
+9e5f94bc-e8a4-4e73-b8be-63364c29d753
+
+# Zoom Calendar / Contacts integration
+fc108d3f-543d-4374-bbff-c7c51f651fe5
+```
+
+> \[!WARNING]
+> The sample is illustrative only. Do not treat it as a universal or complete EWS allow list. Build the production file from applications confirmed to require EWS in your tenant.
+
+## Usage examples
+
+### 1\. Preview using the default App ID file
+
+If `EWS-AppIDs.txt` is in the same directory as the script:
+
+```powershell
+.\\Set-EWSAllowedAppIDs.ps1
+```
+
+The script displays:
+
+* the resolved App ID file path;
+* the number of imported unique IDs;
+* the number of existing unique IDs;
+* the size of the merged list;
+* the previous `EwsEnabled` value;
+* the complete proposed list; and
+* the comma-separated value that would be submitted.
+
+No Exchange Online configuration is changed.
+
+### 2\. Preview using a different App ID file
+
+```powershell
+.\\Set-EWSAllowedAppIDs.ps1 -AppIdsPath 'C:\\ChangeData\\Reviewed-EWS-AppIDs.txt'
+```
+
+This is useful when the reviewed inventory is stored outside the script directory.
+
+### 3\. Apply using the default App ID file
+
+```powershell
+.\\Set-EWSAllowedAppIDs.ps1 -Apply
+```
+
+The script:
+
+1. validates the input;
+2. retrieves and merges the current allow list;
+3. creates the timestamped JSON backup;
+4. sets `EwsEnabled` to `$true`;
+5. writes the complete merged `EwsAllowedAppIDs` value; and
+6. retrieves and displays the saved configuration.
+
+### 4\. Apply using a specific App ID file
+
+```powershell
+.\\Set-EWSAllowedAppIDs.ps1 `
+    -AppIdsPath 'C:\\ChangeData\\Approved-EWS-AppIDs.txt' `
+    -Apply
+```
+
+## Example preview summary
+
+Values will vary by tenant and input file.
+
+```text
+Configuration summary:
+
+AppIdFilePath           : C:\\Scripts\\EWS-AppIDs.txt
+ImportedAppIdCount      : 81
+UniqueExistingAppIdCount: 4
+MergedAppIdCount        : 83
+PreviousEwsEnabled      : True
+
+PREVIEW ONLY: No changes made. To apply the configuration, run this script again with -Apply.
+```
+
+The merged count can be smaller than the sum of imported and existing counts because duplicate IDs are removed.
+
+## Important operational considerations
+
+* **Use client IDs:** `EwsAllowedAppIDs` expects the application/client ID of the application calling EWS.
+* **Treat the inventory as tenant-specific:** Include only applications that have been reviewed and approved for continued EWS access.
+* **Preserve the complete list:** Updating `EwsAllowedAppIDs` writes the supplied list as the configuration value. This script protects existing entries by merging them before writing.
+* **Removing access requires a separate process:** Deleting an entry from `EWS-AppIDs.txt` is not sufficient because existing tenant entries are preserved.
+* **Keep the backup:** Store the JSON backup with the associated change record so the previous state remains available.
+* **Test after propagation:** Do not interpret an immediate test result as proof that the new allow list has fully propagated.
+* **Review other EWS controls separately:** `EwsAllowedAppIDs` is based on Microsoft Entra application IDs. It is distinct from older user-agent-based settings such as `EwsApplicationAccessPolicy`, `EWSAllowList`, and `EWSBlockList`.
+
+## Limitations
+
+* The script does not discover EWS applications.
+* It does not verify whether an imported application currently calls EWS.
+* It does not map application IDs to application names.
+* It does not remove or revoke existing allowed application IDs.
+* It does not test application authentication, consent, permissions, or mailbox access.
+* It does not guarantee that the source inventory is complete.
+* It enables EWS at the organisation level when `-Apply` is used.
+
+## Recommended change workflow
+
+1. Inventory EWS-dependent applications using the reporting and discovery sources approved for your environment.
+2. Review application ownership, business need, and application/client IDs.
+3. Prepare `EWS-AppIDs.txt` with one approved GUID per line.
+4. Connect to Exchange Online PowerShell.
+5. Run the script without `-Apply`.
+6. Save or review the preview output as part of the change record.
+7. Confirm that existing App IDs are present in the merged result.
+8. Run the script with `-Apply` during the approved change window.
+9. Retain the JSON backup.
+10. After service propagation, validate each required EWS-dependent application.
+
+## Microsoft documentation
+
+* [Control access to EWS in Exchange](https://learn.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-control-access-to-ews-in-exchange)
+* [Set-OrganizationConfig reference](https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/set-organizationconfig)
+* [Deprecation of Exchange Web Services in Exchange Online](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-ews-exchange-online)
+* [Verify first-party Microsoft applications in sign-in reports](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/governance/verify-first-party-apps-sign-in)
+
+## Disclaimer
+
+Test the script and the resulting configuration in a suitable non-production environment wherever possible. The administrator running the script is responsible for validating the application inventory, approving the change, and confirming application functionality after the configuration has propagated.
 
